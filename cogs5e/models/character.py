@@ -5,6 +5,7 @@ import cachetools
 from disnake.ext.commands import NoPrivateMessage
 
 import aliasing.evaluators
+import aliasing.api.statblock
 from cogs5e.models.ddbsync import DDBSheetSync
 from cogs5e.models.dicecloud.integration import DicecloudIntegration
 from cogs5e.models.embeds import EmbedWithCharacter
@@ -344,6 +345,7 @@ class Character(StatBlock):
         :returns str - the string with annotations evaluated
         """
         evaluator = aliasing.evaluators.AutomationEvaluator.with_character(self)
+        evaluator.builtins["caster"] = aliasing.api.statblock.AliasStatBlock(self)
 
         try:
             return evaluator.transformed_str(varstr)
@@ -604,7 +606,8 @@ class Character(StatBlock):
         """Adds a spell to the character's known spell list."""
         if spell.name in self.spellbook:
             raise InvalidArgument("You already know this spell.")
-        sbs = SpellbookSpell.from_spell(spell, dc, sab, mod)
+        sbs = SpellbookSpell.from_spell(spell, dc, sab, mod, self.options.version)
+
         self.spellbook.spells.append(sbs)
         self.overrides.spells.append(sbs)
 

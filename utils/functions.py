@@ -99,7 +99,6 @@ def search(
             # Sort
             sorted_results = sorted(results, key=lambda e: ratio_results[key(e)], reverse=True)
             results = sorted_results
-            print(results)
 
         else:
             results = partial_matches
@@ -180,8 +179,7 @@ async def get_selection(
             embed.add_field(
                 name="Instructions",
                 value=(
-                    "Type your response in the channel you called the command. This message was PMed to "
-                    "you to hide the monster name."
+                    f"Type your choice in {ctx.channel.mention}. This message was PMed to you to hide the monster name."
                 ),
                 inline=False,
             )

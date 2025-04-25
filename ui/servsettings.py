@@ -23,10 +23,11 @@ TOO_MANY_ROLES_SENTINEL = "__special:too_many_roles"
 
 
 class ServerSettingsMenuBase(MenuBase, abc.ABC):
-    __menu_copy_attrs__ = ("bot", "settings", "guild")
+    __menu_copy_attrs__ = ("bot", "settings", "guild", "readonly")
     bot: _AvraeT
     settings: ServerSettings
     guild: disnake.Guild
+    readonly: bool
 
     async def commit_settings(self):
         """Commits any changed guild settings to the db."""
@@ -48,14 +49,26 @@ class ServerSettingsMenuBase(MenuBase, abc.ABC):
             )
         return "Inline rolling is currently **enabled**. I'll roll any `[[dice]]` I find in messages!"
 
+    def setup_readonly(self):
+        self.clear_items()
+
+        if hasattr(self, "back"):
+            self.add_item(self.back)
+
+        if hasattr(self, "exit"):
+            self.add_item(self.exit)
+
 
 class ServerSettingsUI(ServerSettingsMenuBase):
     @classmethod
-    def new(cls, bot: _AvraeT, owner: disnake.User, settings: ServerSettings, guild: disnake.Guild):
+    def new(
+        cls, bot: _AvraeT, owner: disnake.User, settings: ServerSettings, guild: disnake.Guild, readonly: bool = True
+    ):
         inst = cls(owner=owner)
         inst.bot = bot
         inst.settings = settings
         inst.guild = guild
+        inst.readonly = readonly
         return inst
 
     @disnake.ui.button(label="Lookup Settings", style=disnake.ButtonStyle.primary)
@@ -91,7 +104,9 @@ class ServerSettingsUI(ServerSettingsMenuBase):
                 f"**Monsters Require DM**: {self.settings.lookup_dm_required}\n"
                 f"**Direct Message DM**: {self.settings.lookup_pm_dm}\n"
                 f"**Direct Message Results**: {self.settings.lookup_pm_result}\n"
-                f"**Prefer Legacy Content**: {legacy_preference_desc(self.settings.legacy_preference)}"
+                f"**Prefer Legacy Content**: {legacy_preference_desc(self.settings.legacy_preference)}\n"
+                f"**5e Rules Version**: {self.settings.version}\n"
+                f"**Allow Character Override**: {self.settings.allow_character_override}"
             ),
             inline=False,
         )
@@ -176,6 +191,23 @@ class _LookupSettingsUI(ServerSettingsMenuBase):
         await self.commit_settings()
         await self.refresh_content(interaction)
 
+    # Switch between 2014 and 2024 version from guild.py Server Settings
+    @disnake.ui.button(label="Switch Version", style=disnake.ButtonStyle.primary)
+    async def switch_version(self, _: disnake.ui.Button, interaction: disnake.Interaction):
+        if self.settings.version == "2024":
+            self.settings.version = "2014"
+        else:
+            self.settings.version = "2024"
+        await self.commit_settings()
+        await self.refresh_content(interaction)
+
+    # Allow character override
+    @disnake.ui.button(label="Toggle Allow Character Override", style=disnake.ButtonStyle.primary)
+    async def toggle_character_override(self, _: disnake.ui.Button, interaction: disnake.Interaction):
+        self.settings.allow_character_override = not self.settings.allow_character_override
+        await self.commit_settings()
+        await self.refresh_content(interaction)
+
     @disnake.ui.button(label="Back", style=disnake.ButtonStyle.grey, row=4)
     async def back(self, _: disnake.ui.Button, interaction: disnake.Interaction):
         await self.defer_to(ServerSettingsUI, interaction)
@@ -245,6 +277,9 @@ class _LookupSettingsUI(ServerSettingsMenuBase):
     async def _before_send(self):
         self._refresh_dm_role_select()
 
+        if self.readonly:
+            self.setup_readonly()
+
     async def get_content(self):
         embed = disnake.Embed(
             title=f"Server Settings ({self.guild.name}) / Lookup Settings",
@@ -310,6 +345,21 @@ class _LookupSettingsUI(ServerSettingsMenuBase):
                 "between the two.*"
             ),
         )
+        embed.add_field(
+            name="D&D 5e Version",
+            value=(
+                f"**{self.settings.version}**\n" "*Toggle the version of D&D 5e rules you want to use in this server.*"
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="Allow Character Override",
+            value=(
+                f"**{self.settings.allow_character_override}**\n"
+                "*If this is enabled, users are able to use their own character version vs being locked to the server version.*"
+            ),
+            inline=False,
+        )
         return {"embed": embed}
 
 
@@ -352,6 +402,9 @@ class _InlineRollingSettingsUI(ServerSettingsMenuBase):
             self.react.disabled = True
         elif self.settings.inline_enabled is InlineRollingType.ENABLED:
             self.enable.disabled = True
+
+        if self.readonly:
+            self.setup_readonly()
 
     async def get_content(self):
         embed = disnake.Embed(
@@ -406,6 +459,9 @@ class _MiscellaneousSettingsUI(ServerSettingsMenuBase):
         )
         if not flag_enabled:
             self.remove_item(self.toggle_upenn_nlp_opt_in)
+
+        if self.readonly:
+            self.setup_readonly()
 
     async def get_content(self):
         embed = disnake.Embed(
@@ -690,6 +746,9 @@ class _RollStatsSettingsUI(ServerSettingsMenuBase):
 
     async def _before_send(self):
         self._refresh_remove_rule_select()
+
+        if self.readonly:
+            self.setup_readonly()
 
     async def get_content(self):
         embed = disnake.Embed(
